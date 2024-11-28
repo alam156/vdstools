@@ -5,9 +5,10 @@ import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.bouncycastle.util.encoders.Hex;
 import org.tinylog.Logger;
 
+import java.math.BigInteger;
 import java.security.*;
 import java.security.cert.X509Certificate;
-import java.security.interfaces.ECPublicKey;
+import java.security.interfaces.RSAPublicKey;
 
 public class Verifier {
 
@@ -15,24 +16,26 @@ public class Verifier {
 		SignatureValid, SignatureInvalid, VerifyError,
 	}
 
-	private final ECPublicKey ecPubKey;
-	private final int fieldBitLength;
-	private final byte[] messageBytes;
-	private final byte[] signatureBytes;
+	//private ECPublicKey ecPubKey;
+	private RSAPublicKey rsaPubKey;
+	private int fieldBitLength = 256;
+	private byte[] messageBytes;
+	private byte[] signatureBytes;
 
-	String signatureAlgorithmName = "SHA256WITHECDSA";
+	String signatureAlgorithmName = "SHA256withRSA";
 
 	public Verifier(DigitalSeal digitalSeal, X509Certificate sealSignerCertificate) {
 		Security.addProvider(new BouncyCastleProvider());
-		if (!(sealSignerCertificate.getPublicKey() instanceof ECPublicKey)) {
+		if (!(sealSignerCertificate.getPublicKey() instanceof RSAPublicKey)) {
 			throw new IllegalArgumentException("Certificate should contain EC public key!");
 		}
-		ecPubKey = (ECPublicKey) sealSignerCertificate.getPublicKey();
-		this.fieldBitLength = ecPubKey.getParams().getCurve().getField().getFieldSize();
+		rsaPubKey = (RSAPublicKey) sealSignerCertificate.getPublicKey();
+		BigInteger modulus = rsaPubKey.getModulus();
+		this.fieldBitLength = modulus.bitLength()/8;
 		this.messageBytes = digitalSeal.getHeaderAndMessageBytes();
 		this.signatureBytes = digitalSeal.getSignatureBytes();
 
-		Logger.debug("Public Key bytes: 0x{}", Hex.toHexString(ecPubKey.getEncoded()));
+		Logger.debug("Public Key bytes: 0x{}", Hex.toHexString(rsaPubKey.getEncoded()));
 		Logger.debug("Field bit length: {}", this.fieldBitLength);
 		Logger.debug("Message bytes: {}", Hex.toHexString(messageBytes));
 		Logger.debug("Signature bytes: {}", Hex.toHexString(signatureBytes));
@@ -44,13 +47,13 @@ public class Verifier {
 		// as defined in ICAO9303 p13 ch2.4
 
 		if (fieldBitLength <= 224) {
-			signatureAlgorithmName = "SHA224withPLAIN-ECDSA";
+			signatureAlgorithmName = "SHA224withRSA";
 		} else if (fieldBitLength <= 256) {
-			signatureAlgorithmName = "SHA256withPLAIN-ECDSA";
+			signatureAlgorithmName = "SHA256withRSA";
 		} else if (fieldBitLength <= 384) {
-			signatureAlgorithmName = "SHA384withPLAIN-ECDSA";
+			signatureAlgorithmName = "SHA384withRSA";
 		} else if (fieldBitLength <= 512) {
-			signatureAlgorithmName = "SHA512withPLAIN-ECDSA";
+			signatureAlgorithmName = "SHA512withRSA";
 		} else {
 			Logger.error("Bit length of Field is out of definied value: " + fieldBitLength);
 			return Result.VerifyError;
@@ -59,7 +62,7 @@ public class Verifier {
 		try {
 			Logger.debug("Verify with signatureAlgorithmName: " + signatureAlgorithmName);
 			Signature ecdsaVerify = Signature.getInstance(signatureAlgorithmName, "BC");
-			ecdsaVerify.initVerify(ecPubKey);
+			ecdsaVerify.initVerify(rsaPubKey);
 			ecdsaVerify.update(messageBytes);
 
 			if (ecdsaVerify.verify(signatureBytes)) {

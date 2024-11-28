@@ -17,63 +17,76 @@
  */
 package de.tsenger.vdstools;
 
-import org.bouncycastle.jcajce.provider.asymmetric.ec.BCECPrivateKey;
+import org.bouncycastle.jcajce.provider.asymmetric.rsa.BCRSAPrivateKey;
+import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.tinylog.Logger;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.security.*;
-import java.security.interfaces.ECPrivateKey;
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
 
 public class Signer {
 
-	private BCECPrivateKey ecPrivKey;
+	private BCRSAPrivateKey bcrsaPrivateKey;
 
-	public Signer(ECPrivateKey privKey) {
-		this.ecPrivKey = (BCECPrivateKey) privKey;
+	public Signer(PrivateKey privKey) throws NoSuchAlgorithmException, InvalidKeySpecException, IOException, NoSuchProviderException {
+		Security.addProvider(new BouncyCastleProvider());
+		byte[] encodedKey = privKey.getEncoded();
+		PKCS8EncodedKeySpec keySpec = new PKCS8EncodedKeySpec(encodedKey);
+		KeyFactory keyFactory = KeyFactory.getInstance("RSA", "BC");
+		this.bcrsaPrivateKey = (BCRSAPrivateKey) keyFactory.generatePrivate(keySpec);
 	}
 
 	public Signer(KeyStore keyStore, String keyStorePassword, String keyAlias) {
 		try {
-			this.ecPrivKey = (BCECPrivateKey) keyStore.getKey(keyAlias, keyStorePassword.toCharArray());
+			this.bcrsaPrivateKey = (BCRSAPrivateKey) keyStore.getKey(keyAlias, keyStorePassword.toCharArray());
 		} catch (KeyStoreException | UnrecoverableKeyException | NoSuchAlgorithmException e) {
 			Logger.error("getPrivateKeyByAlias failed: " + e.getMessage());
 		}
 	}
 
 	public int getFieldSize() {
-		return ecPrivKey.getParameters().getCurve().getFieldSize();
+		BigInteger modulus = this.bcrsaPrivateKey.getModulus();
+		System.out.println(modulus.bitLength());
+		return modulus.bitLength();
 	}
 
 	public byte[] sign(byte[] dataToSign) throws NoSuchAlgorithmException, InvalidKeyException, SignatureException,
 			InvalidAlgorithmParameterException, IOException, NoSuchProviderException {
-		if (ecPrivKey == null) {
+		if (bcrsaPrivateKey == null) {
 			throw new InvalidKeyException("private key not initialized. Load from file or generate new one.");
 		}
 
 		// Changed 02.12.2021:
-		// Signature depends now on the curves bit length according to BSI TR-03116-2
+		// Signature depends now on curves bit length according to BSI TR-03116-2
 		// 2024-10-20: even more precise Doc9309-13 chapter 2.4
 		int fieldBitLength = getFieldSize();
-		Signature ecdsaSign;
-		if (fieldBitLength <= 224) {
-			ecdsaSign = Signature.getInstance("SHA224withPLAIN-ECDSA", "BC");
-		} else if (fieldBitLength <= 256) {
-			ecdsaSign = Signature.getInstance("SHA256withPLAIN-ECDSA", "BC");
-		} else if (fieldBitLength <= 384) {
-			ecdsaSign = Signature.getInstance("SHA384withPLAIN-ECDSA", "BC");
-		} else if (fieldBitLength <= 512) {
-			ecdsaSign = Signature.getInstance("SHA512withPLAIN-ECDSA", "BC");
+		Signature rsaSign;
+		if (fieldBitLength <= 2048) {
+			System.out.println("224");
+			rsaSign = Signature.getInstance("SHA256withRSA", "BC");
+		} else if (fieldBitLength <= 3072) {
+			System.out.println("256");
+			rsaSign = Signature.getInstance("SHA256withRSA", "BC");
+		} else if (fieldBitLength <= 4096) {
+			System.out.println("384");
+			rsaSign = Signature.getInstance("SHA384withRSA", "BC");
+		} else if (fieldBitLength <= 8192) {
+			System.out.println("512");
+			rsaSign = Signature.getInstance("SHA512withRSA", "BC");
 		} else {
 			Logger.error("Bit length of Field is out of defined value: " + fieldBitLength);
 			throw new InvalidAlgorithmParameterException(
-					"Bit length of Field is out of defined value (224 to 512 bits): " + fieldBitLength);
+					"Bit length of Field is out of defined value (2048 to 8192 bits): " + fieldBitLength);
 		}
 
-		Logger.info("ECDSA algorithm: " + ecdsaSign.getAlgorithm());
+		Logger.info("ECDSA algorithm: " + rsaSign.getAlgorithm());
 
-		ecdsaSign.initSign(ecPrivKey);
-		ecdsaSign.update(dataToSign);
+		rsaSign.initSign(bcrsaPrivateKey);
+		rsaSign.update(dataToSign);
 
-		return ecdsaSign.sign();
+		return rsaSign.sign();
 	}
 }
