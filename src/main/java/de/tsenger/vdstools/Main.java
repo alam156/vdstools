@@ -9,6 +9,10 @@ import de.tsenger.vdstools.vds.DigitalSeal;
 import de.tsenger.vdstools.vds.VdsHeader;
 import de.tsenger.vdstools.vds.VdsMessage;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -21,6 +25,32 @@ import java.util.Enumeration;
 
 
 public class Main {
+    public static byte[] convertBitMatrixToByteArray(BitMatrix bitMatrix, String format) throws Exception {
+        // Validate format
+        if (!format.equalsIgnoreCase("PNG") && !format.equalsIgnoreCase("JPEG")) {
+            throw new IllegalArgumentException("Unsupported image format: " + format);
+        }
+
+        // Convert BitMatrix to BufferedImage
+        int width = bitMatrix.getWidth();
+        int height = bitMatrix.getHeight();
+        BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+
+        for (int x = 0; x < width; x++) {
+            for (int y = 0; y < height; y++) {
+                image.setRGB(x, y, bitMatrix.get(x, y) ? 0xFF000000 : 0xFFFFFFFF); // Black or white
+            }
+        }
+
+        // Write BufferedImage to ByteArrayOutputStream
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
+            boolean success = ImageIO.write(image, format, baos);
+            if (!success) {
+                throw new RuntimeException("Failed to write image in format: " + format);
+            }
+            return baos.toByteArray();
+        }
+    }
 
     public static void main(String[] args) {
         try {
@@ -65,7 +95,7 @@ public class Main {
 
 
                 //verify
-                
+                //byte[] byteArray = convertBitMatrixToByteArray(bitMatrix, "PNG");
 
                 DigitalSeal digitalSealToVerify = DigitalSeal.fromByteArray(encodedBytes);
                 String vdsType = digitalSeal.getVdsType();
@@ -113,6 +143,8 @@ public class Main {
         } catch (InvalidKeySpecException e) {
             throw new RuntimeException(e);
         } catch (NoSuchProviderException e) {
+            throw new RuntimeException(e);
+        } catch (Exception e) {
             throw new RuntimeException(e);
         }
 

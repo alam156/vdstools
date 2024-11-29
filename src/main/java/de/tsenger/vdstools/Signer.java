@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (C) 2020 Tobias Senger (info@tsenger.de)
  *
  * This program is free software; you can redistribute it and/or
@@ -90,3 +90,4 @@ public class Signer {
 		return rsaSign.sign();
 	}
 }
+
